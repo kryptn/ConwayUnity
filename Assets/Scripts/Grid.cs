@@ -1,20 +1,37 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using UnityEngine;
+using UnityEngine.UI;
 
 public class Grid : MonoBehaviour
 {
     public GameObject CellPrefab;
+    public GameObject ResetButton;
+    public GameObject SpeedSlider;
+    public GameObject StatsText;
 
+    public float IterationConstant = 4;
     public float IterationTime;
     public float NextUpdate;
 
-    private Dictionary<Vector3, GameObject> grid;
+    private Dictionary<Vector3, GameObject> grid; 
+
+
+    private int CellsAlive { get { return grid.Count(i => i.Value.GetComponent<Cell>().CellState); } }
+    private int TotalCells { get { return grid.Count; } }
+    private int CellsExtinct = 0;
 
 
     void Start()
     {
+        var button = ResetButton.GetComponent<Button>();
+        button.onClick.AddListener(() => grid.ToList().ForEach(DestroyCell));
+
+        var slider = SpeedSlider.GetComponent<Slider>();
+        slider.onValueChanged.AddListener(value => IterationConstant = value);
+
         grid = new Dictionary<Vector3, GameObject>();
         NextUpdate = Time.time;
     }
@@ -22,9 +39,12 @@ public class Grid : MonoBehaviour
     private void FixedUpdate()
     {
 
-        if (Input.GetMouseButtonDown(0))
+
+        var overUI = UnityEngine.EventSystems.EventSystem.current.IsPointerOverGameObject();
+
+        if (Input.GetMouseButtonDown(0) && !overUI)
         {
-            var pos = Round(Camera.main.ScreenToWorldPoint(Input.mousePosition));
+            var pos = Helpers.Round(Camera.main.ScreenToWorldPoint(Input.mousePosition));
             var target = Create(pos, true).GetComponent<Cell>();
             target.Toggle();
         }
@@ -32,11 +52,17 @@ public class Grid : MonoBehaviour
             TimedUpdate();
     }
 
+    private void LateUpdate()
+    {
+        var text = "Cells Alive: " + CellsAlive + "\nCells Dead:  " + (TotalCells - CellsAlive) + "\nTotal Cells: " + (CellsExtinct + TotalCells);
+        StatsText.GetComponent<Text>().text = text;
+    }
+
     private void TimedUpdate()
     {
         if (Time.time > NextUpdate)
         {
-            NextUpdate = Time.time + IterationTime;
+            NextUpdate = Time.time + IterationConstant;
             Iterate();
         }
     }
@@ -85,22 +111,14 @@ public class Grid : MonoBehaviour
         }
 
         // destroy any extinct
-        foreach (var cell in grid.ToList())
-        {
-            var c = cell.Value.GetComponent<Cell>();
-            if (c.Extinct)
-            {
-                grid.Remove(cell.Key);
-                Destroy(cell.Value);
-            }
-        }
-
-
+        grid.Where(c => c.Value.GetComponent<Cell>().Extinct).ToList().ForEach(DestroyCell);
     }
-    
-    private Vector3 Round(Vector3 v)
+
+    private void DestroyCell(KeyValuePair<Vector3, GameObject> item)
     {
-        return new Vector3(Mathf.Round(v.x), Mathf.Round(v.y), 0);
+        grid.Remove(item.Key);
+        Destroy(item.Value);
+        CellsExtinct += 1;
     }
 }
 
