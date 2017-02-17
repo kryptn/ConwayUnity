@@ -8,6 +8,7 @@ sysinfo.txt
 *.stackdump
 /*_Data/
 *.exe
+/Build/
  
 # ============================================= #
 # Visual Studio / MonoDevelop / Rider generated #

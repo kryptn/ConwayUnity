@@ -11,17 +11,20 @@ public class Grid : MonoBehaviour
     public GameObject ResetButton;
     public GameObject SpeedSlider;
     public GameObject StatsText;
+    public GameObject SliderText;
 
     public float IterationConstant = 4;
     public float IterationTime;
     public float NextUpdate;
 
-    private Dictionary<Vector3, GameObject> grid; 
+    private Dictionary<Vector3, GameObject> grid;
+    private bool IterationStopped;
 
-
+    private string NextTimer { get { return !IterationStopped ? ((Time.time - NextUpdate) * -1).ToString("0.00") + "s" : "Stopped"; } }
     private int CellsAlive { get { return grid.Count(i => i.Value.GetComponent<Cell>().CellState); } }
     private int TotalCells { get { return grid.Count; } }
     private int CellsExtinct = 0;
+    private int Generations = 0;
 
 
     void Start()
@@ -30,10 +33,12 @@ public class Grid : MonoBehaviour
         button.onClick.AddListener(() => grid.ToList().ForEach(DestroyCell));
 
         var slider = SpeedSlider.GetComponent<Slider>();
-        slider.onValueChanged.AddListener(value => IterationConstant = value);
-
+        slider.onValueChanged.AddListener(UpdateSlider);
+        
         grid = new Dictionary<Vector3, GameObject>();
         NextUpdate = Time.time;
+
+        UpdateSlider(slider.GetComponent<Slider>().value);
     }
 
     private void FixedUpdate()
@@ -48,13 +53,17 @@ public class Grid : MonoBehaviour
             var target = Create(pos, true).GetComponent<Cell>();
             target.Toggle();
         }
-        if(!Input.GetKey(KeyCode.Mouse2))
+        if (!Input.GetKey(KeyCode.Mouse2) && !IterationStopped)
             TimedUpdate();
     }
 
     private void LateUpdate()
     {
-        var text = "Cells Alive: " + CellsAlive + "\nCells Dead:  " + (TotalCells - CellsAlive) + "\nTotal Cells: " + (CellsExtinct + TotalCells);
+        var text = "Next Iteration in: " + NextTimer +
+               "\n\nCells Alive: " + CellsAlive + 
+                 "\nCells Dead:  " + (TotalCells - CellsAlive) +
+                 "\nTotal Cells: " + (CellsExtinct + TotalCells) +
+                 "\nGenerations: " + Generations;
         StatsText.GetComponent<Text>().text = text;
     }
 
@@ -63,24 +72,23 @@ public class Grid : MonoBehaviour
         if (Time.time > NextUpdate)
         {
             NextUpdate = Time.time + IterationConstant;
+            Generations += grid.Count != 0 ? 1 : 0;
             Iterate();
         }
     }
 
-    private GameObject Create(Vector3 pos, bool createPotentials = false)
+    private GameObject Create(Vector3 pos, bool createPotentials = false, bool defaultState = false)
     {
         if (!grid.ContainsKey(pos))
             grid[pos] = Instantiate(CellPrefab, pos, Quaternion.identity, transform);
        
-        var go = grid[pos];
-
         if (createPotentials)
         {
             foreach (var c in Helpers.Surrounding(pos))
                 Create(c);
         }
 
-        return go;
+        return grid[pos];
     }
 
     private void Iterate()
@@ -92,22 +100,14 @@ public class Grid : MonoBehaviour
                 Create(cell.Key, true);
         }
 
-
         // check life
         foreach (var cell in grid)
         {
-            var alive = new List<Cell>();
+            var aliveCells = (from candidate in Helpers.Surrounding(cell.Key)
+                where grid.ContainsKey(candidate) && cell.Key != candidate
+                select grid[candidate].GetComponent<Cell>()).ToList();
 
-            foreach (var candidate in Helpers.Surrounding(cell.Key))
-            {
-                var cont = grid.ContainsKey(candidate);
-                if (cont && cell.Key != candidate)
-                    alive.Add(grid[candidate].GetComponent<Cell>());
-            }
-
-            var aliveCount = alive.Count(i => i.CellState);
-
-            cell.Value.GetComponent<Cell>().Resolve(aliveCount);
+            cell.Value.GetComponent<Cell>().Resolve(aliveCells.Count(i => i.CellState));
         }
 
         // destroy any extinct
@@ -119,6 +119,15 @@ public class Grid : MonoBehaviour
         grid.Remove(item.Key);
         Destroy(item.Value);
         CellsExtinct += 1;
+    }
+
+    private void UpdateSlider(float value)
+    {
+        var slider = SpeedSlider.GetComponent<Slider>();
+
+        IterationConstant = value;
+        IterationStopped = value == slider.maxValue;
+        SliderText.GetComponent<Text>().text = value / slider.maxValue == 1 ? "Stopped" : value.ToString("0.00")+"s";
     }
 }
 
